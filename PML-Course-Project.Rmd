@@ -1,0 +1,148 @@
+---
+title: "Practical Machine Learning Project"
+author: "TAG"
+date: "June 2, 2017"
+output: html_document
+---
+
+## Overview
+
+#Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks.
+
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, our goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+The goal of this analysis is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. Once a model method has been established, we will use it to predict 20 different test cases.
+
+More information on the data is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+
+## Getting & Cleaning Data
+
+First we load the libraries necessary for analysis
+```{r LoadLibraries, message=FALSE}
+library(knitr)
+library(lattice)
+library(plyr)
+library(ggplot2)
+
+
+library(caret)
+
+library(rpart)
+library(rpart.plot)
+
+library(rattle)
+library(randomForest)
+
+library(gbm)
+library(e1071)
+```
+
+For reproducibility, we set the seed equal to today's date.
+```{r Set Seed}
+set.seed(20170602)
+```
+
+Next we'll actually get the Training and Test Case data. Note the Test Case data will be set aside for use in the quiz at the end. We'll also split the Training data into training and testing sets, using a 70:30 ratio.
+```{r GetData}
+
+#Set URLs
+TrainingURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+TestCaseURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+#Load Data
+training <- read.csv(url(TrainingURL))
+testcase  <- read.csv(url(TestCaseURL))
+
+# Partition Data
+inTrain  <- createDataPartition(training$classe, p=0.7, list=FALSE)
+TrainSet <- training[inTrain, ]
+TestSet <- training[-inTrain, ]
+
+```
+
+Finally, we'll further clean the data by:
+* Removing the Column that are strictly for identification (Columns 1-5)
+* Removing Columns containing more than 50% NA Data
+* Removing Columns with near 0 variance (NZV)
+
+```{r CleanUpData}
+# Remove columns 1-5
+TrainSet <- TrainSet[, -(1:5)]
+TestSet  <- TestSet[, -(1:5)]
+
+# Remove columns with more than 50% NA Data
+NAdata <- sapply(TrainSet, function(x) mean(is.na(x))) > 0.5
+TrainSet <- TrainSet[, NAdata==FALSE]
+TestSet  <- TestSet[, NAdata==FALSE]
+
+# Remove columns with near 0 variance (NZV)
+NZVdata <- nearZeroVar(TrainSet)
+TrainSet <- TrainSet[, -NZVdata]
+TestSet  <- TestSet[, -NZVdata]
+
+```
+
+# Prediction Modeling
+
+We'll use three common methods of prediction modeling to determine the best fit:
+* Boosted 
+* Decision Tree
+* Random Forest
+
+##Boosted
+```{r Boosted}
+FitBoost <- train(classe ~ ., data=TrainSet, method = "gbm",
+                  trControl = trainControl(method = "repeatedcv",
+                                           number = 5,
+                                           repeats = 1),
+                  verbose = FALSE)
+
+PredictBoost <- predict(FitBoost, newdata = TestSet)
+
+MatrixBoost <- confusionMatrix(PredictBoost, TestSet$classe)
+
+MatrixBoost
+```
+
+As we can see, the Accuracy is 0.9888, so an out-of-sample error rate of 0.0112.
+
+##Decision Tree
+```{r DecisionTree}
+FitTree <- rpart(classe ~ ., data=TrainSet, method = "class")
+
+PredictTree <- predict(FitTree, newdata = TestSet, type = "class")
+
+MatrixTree <- confusionMatrix(PredictTree, TestSet$classe)
+
+MatrixTree
+```
+As we can see, the Accuracy is 0.8253, so an out-of-sample error rate of 0.1747.
+
+##Random Forest
+```{r RandomForest}
+
+FitForest <- train(classe ~ ., data = TrainSet,
+                   method = "rf",
+                   trControl = trainControl(method = "repeatedcv",
+                                            number = 5,
+                                            repeats = 1))
+
+PredictForest <- predict(FitForest, newdata = TestSet)
+
+MatrixForest <- confusionMatrix(PredictForest, TestSet$classe)
+MatrixForest
+```
+
+As we can see, the Accuracy is 0.9985, so an out-of-sample error rate of 0.0015.
+
+#Final Conclusions And Analysis
+
+A Random Forest approach had the best accuracy, so we'll apply that to the quiz sample, TestCase.
+
+```{r TestCaseQuiz}
+PredictQuiz <- predict(FitForest, newdata = testcase)
+PredictQuiz
+```
